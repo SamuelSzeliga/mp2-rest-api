@@ -4,7 +4,8 @@ import logging
 from pathlib import Path
 import pandas as pd
 from fastapi import FastAPI, File, HTTPException, Query, UploadFile
-from src._init_ import DatasetInfo, DatasetStorage, HealthResponse, setup_logging
+from src._init_ import DatasetInfo, DatasetStorage, HealthResponse, setup_logging, ProcessConfig, ProcessingReport
+from data_pipeline._init_ import create_cleaning_report, process_data, validate_dataframe
 
 setup_logging(verbose=True)
 logger = logging.getLogger(__name__)
@@ -59,3 +60,54 @@ def get_dataset(dataset_id: int, limit: int = Query(default=100, ge=1)):
             "data": records,
             "total_rows": len(df)
             }
+
+
+@app.post(
+    "/datasets/{dataset_id}/process",
+    response_model=ProcessingReport
+)
+def process_dataset(dataset_id: int, config: ProcessConfig):
+    """Validate and process a stored dataset using MP1 functions."""
+    
+    #Retrieve copy
+    df = storage.get(dataset_id)
+    if df is None:
+        raise HTTPException(status_code=404, detail="Does not exist")
+
+    #Convert to dictionary
+    config_dictionary = config.model_dump()
+
+    #Confirm numeric columns exist in df
+    missing_cols = [col for col in config.validation.numeric_columns if col not in df.columns]
+    if missing_cols:
+        raise HTTPException(status_code=400, detail="Missing column")
+
+    #Validate using configured required and numeric columns
+    try:
+        validated_df = validate_dataframe(df, required_columns=config.validation.required_columns, numeric_columns=config.model_validate.numeric_columns)
+    except ValueError as error:
+        raise HTTPException(HTTPException(status_code=400, detail=str(error)))
+
+    #Record how many rows removed and copy validated DataFrame before processing
+    validation_rows_removed = len(df) - len(validated_df)
+    validated_copy = validated_df.copy()
+    logger.info(f"Validation removed {validation_rows_removed} rows")
+
+    #Process data with validated DataFrame and full configuration dictionary
+    try:
+        processed_df = process_data(validated_copy, config_dictionary)
+    except ValueError as error:
+        raise HTTPException(HTTPException(status_code=400, detail=str(error)))
+
+    #Cleaning report
+    cleaning_report = create_cleaning_report(df_before=validated_df, df_after=processed_df)
+
+    #Update after validation and processing both succeed
+    storage.update(dataset_id, processed_df)
+
+    #Return dict matching ProcessingReport
+    return {
+        id: int,
+        validation_rows_removed: int,
+        cleaning_report: dict[str, int]
+    }
