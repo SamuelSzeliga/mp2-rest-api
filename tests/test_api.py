@@ -22,7 +22,7 @@ def test_upload_csv(client, sample_csv_bytes):
 
 
 def test_process_and_retrieve(client, uploaded_dataset_id, processing_body):
-    
+
     process_response = client.post(f"/datasets/{uploaded_dataset_id}/process",
         json=processing_body)
     assert process_response.status_code == 200

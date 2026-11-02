@@ -64,10 +64,7 @@ def get_dataset(dataset_id: int, limit: int = Query(default=100, ge=1)):
             }
 
 
-@app.post(
-    "/datasets/{dataset_id}/process",
-    response_model=ProcessingReport
-)
+@app.post("/datasets/{dataset_id}/process", response_model=ProcessingReport)
 def process_dataset(dataset_id: int, config: ProcessConfig):
     """Validate and process a stored dataset using MP1 functions."""
     
@@ -80,9 +77,9 @@ def process_dataset(dataset_id: int, config: ProcessConfig):
     config_dictionary = config.model_dump()
 
     #Confirm numeric columns exist in df
-    missing_cols = [col for col in config.validation.numeric_columns if col not in df.columns]
+    missing_cols = [col for col in config.validation.required_columns if col not in df.columns]
     if missing_cols:
-        raise HTTPException(status_code=400, detail="Missing column")
+        raise HTTPException(status_code=400, detail=f"Missing required columns: {', '.join(missing_cols)}")
 
     #Validate using configured required and numeric columns
     try:
@@ -99,7 +96,7 @@ def process_dataset(dataset_id: int, config: ProcessConfig):
     try:
         processed_df = process_data(validated_copy, config_dictionary)
     except ValueError as error:
-        raise HTTPException(HTTPException(status_code=400, detail=str(error)))
+        raise HTTPException(status_code=400, detail=str(error))
 
     #Cleaning report
     cleaning_report = create_cleaning_report(df_before=validated_df, df_after=processed_df)

@@ -26,7 +26,7 @@ async def log_requests(request: Request, call_next):
     duration_ms = (time.perf_counter() - started) * 1000
 
     message = (f"request_id={request_id}, {request.method}, {request.url.path}"
-            f"status= {response.status_code}, duration={duration_ms}ms")
+            f"status={response.status_code}, duration={duration_ms}ms")
 
     if response.status_code >= 500:
         logger.error(message)
